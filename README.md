@@ -76,3 +76,56 @@ This command trains a graph neural network on the TOX21 dataset and stores the t
 
 ## Generating Counterfactual Explanations MEG: python train_meg.py <experiment_name> --sample <ID>
 
+## Rollout Video (MEG / Tox21)
+
+This repo can optionally record a **rollout video** of the RL agent while it generates counterfactual molecules.
+A video is a sequence of frames where **each frame corresponds to one environment step**.
+
+### What the video shows
+For each step, the video frame contains:
+- the **current molecule** (the environment state **after** applying the chosen action)
+- an overlay with:
+  - `episode`, `step`, `steps_left`
+  - `action`: the SMILES of the new molecule/state
+  - `reward`: total reward (typically a combination of prediction + similarity)
+  - `pred`: prediction-related reward component
+  - `sim`: similarity-related reward component
+  - `eps`: epsilon (exploration rate)
+
+**Frame selection**
+- When video recording is enabled, the code captures **1 frame per step** during selected episodes.
+- With `--max-steps-per-episode 15`, the rollout video will contain up to **15 frames**.
+- The FPS is controlled by `--video-fps` (e.g. 2 fps → ~7.5s for 15 steps).
+
+### Output locations
+For an experiment `tox22` (dataset `tox21`), outputs are saved under:
+
+- TensorBoard logs:
+  - `runs/tox21/tox22/plots/`
+- Checkpoints / run artifacts:
+  - `runs/tox21/tox22/ckpt/`
+- Data splits:
+  - `runs/tox21/tox22/splits/`
+- Rollout videos (if enabled):
+  - `runs/tox21/tox22/videos/`
+  - example: `runs/tox21/tox22/videos/sample_1_ep_1.mp4`
+
+### Run training (Tox21)
+Basic run (no video):
+```bash
+python train_meg.py tox22 \
+  --epochs 5000 \
+  --max-steps-per-episode 15
+
+### Run with rollout video recording:
+python train_meg.py tox22 \
+  --epochs 5000 \
+  --max-steps-per-episode 15 \
+  --record-video \
+  --video-every 1 \
+  --video-fps 2 \
+  --video-size 448
+
+
+### TensorBord
+tensorboard --logdir runs/tox21/tox22/plots --port 6006 --bind_all

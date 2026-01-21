@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn.functional as F
 import os.path as osp
@@ -74,6 +75,9 @@ def train_cycle_classifier(task, train_loader, val_loader, test_loader, len_trai
 
         if best_acc[1] < val_acc:
             best_acc = train_acc, val_acc
+
+            ckpt_dir = osp.join(base_path, "ckpt")
+            os.makedirs(ckpt_dir, exist_ok=True)
 
             torch.save(
                 model.state_dict(),

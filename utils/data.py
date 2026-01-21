@@ -1,3 +1,4 @@
+import os
 import torch
 import random
 
@@ -101,6 +102,7 @@ def _preprocess_tox21(experiment_name: str, batch_size: int):
 
     # Persist splits
     base = f"runs/tox21/{experiment_name}/splits"
+    os.makedirs(base, exist_ok=True)
     torch.save((train.data, train.slices), f"{base}/train.pth")
     torch.save((val.data, val.slices), f"{base}/val.pth")
     torch.save((test.data, test.slices), f"{base}/test.pth")

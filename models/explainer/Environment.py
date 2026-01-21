@@ -27,6 +27,8 @@ from __future__ import print_function
 import collections
 import copy
 import itertools
+import numpy as np
+from PIL import ImageDraw, ImageFont
 
 from rdkit import Chem
 from rdkit.Chem import Draw
@@ -493,3 +495,56 @@ class Molecule(object):
     if isinstance(state, str):
       state = Chem.MolFromSmiles(state)
     return Draw.MolToImage(state, **kwargs)
+  
+  def render(self,
+             mode="rgb_array",
+             state=None,
+             info=None,
+             size=(448, 448),
+             font_size=14,
+             margin=8):
+    """
+    Gym-like render:
+      - mode="rgb_array" -> returns a HxWx3 numpy array (uint8)
+    Overlays optional info (dict) on top of the molecule drawing.
+    """
+    if mode != "rgb_array":
+      raise ValueError(f"Unsupported render mode: {mode}")
+
+    # 1) Get PIL image from RDKit
+    img = self.visualize_state(state=state, size=size).convert("RGB")
+
+    # 2) Draw overlay text if provided
+    if info is not None and len(info) > 0:
+      draw = ImageDraw.Draw(img)
+
+      # Try to load a default font; if it fails, PIL will fallback
+      try:
+        font = ImageFont.load_default()
+      except Exception:
+        font = None
+
+      # Build overlay lines
+      lines = []
+      for k, v in info.items():
+        lines.append(f"{k}: {v}")
+
+      # Background box
+      # Compute approximate text height
+      line_h = font_size + 4
+      box_h = margin * 2 + line_h * len(lines)
+      box_w = size[0]  # full width banner
+
+      # Semi-opaque white rectangle (PIL doesn't support alpha on RGB easily),
+      # so we just draw a white box; it's simple and readable.
+      draw.rectangle([(0, 0), (box_w, box_h)], fill=(255, 255, 255))
+
+      # Draw text
+      y = margin
+      for line in lines:
+        draw.text((margin, y), line, fill=(0, 0, 0), font=font)
+        y += line_h
+
+    # 3) PIL -> numpy RGB array
+    frame = np.array(img, dtype=np.uint8)
+    return frame
