@@ -29,6 +29,7 @@ import copy
 import itertools
 import numpy as np
 from PIL import ImageDraw, ImageFont
+from PIL import Image
 
 from rdkit import Chem
 from rdkit.Chem import Draw
@@ -502,7 +503,8 @@ class Molecule(object):
              info=None,
              size=(448, 448),
              font_size=14,
-             margin=8):
+             margin=8,
+             draw_size=(900, 900)):
     """
     Gym-like render:
       - mode="rgb_array" -> returns a HxWx3 numpy array (uint8)
@@ -512,7 +514,7 @@ class Molecule(object):
       raise ValueError(f"Unsupported render mode: {mode}")
 
     # 1) Get PIL image from RDKit
-    img = self.visualize_state(state=state, size=size).convert("RGB")
+    img = self.visualize_state(state=state, size=draw_size).convert("RGB")
 
     # 2) Draw overlay text if provided
     if info is not None and len(info) > 0:
@@ -546,5 +548,6 @@ class Molecule(object):
         y += line_h
 
     # 3) PIL -> numpy RGB array
+    img = img.resize(size, Image.Resampling.LANCZOS)
     frame = np.array(img, dtype=np.uint8)
     return frame
