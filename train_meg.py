@@ -142,20 +142,51 @@ def meg_train(
     it = 0
     
     # -----------------------------
-    # Video settings (safe defaults)
+    # Video settings (paper-aligned)
     # -----------------------------
-    record_video = args.get("record_video", True)
+    record_video = bool(args.get("record_video", False))
     video_every = int(args.get("video_every", 1))          # registra 1 episodio ogni N
     video_fps = int(args.get("video_fps", 2))
-    video_size = args.get("video_size", (448, 448))
+    video_size = args.get("video_size", (464, 464))
     record_n_episodes = int(args.get("record_n_episodes", 1))
-
-    frames = []
-    recorded_episodes = 0
 
     def should_record_episode(ep_idx_1based: int) -> bool:
         return record_video and (ep_idx_1based % video_every == 0)
 
+    # ------------------------------------------------------------------
+    # Enforce 1-step episodes (paper): one chemical edit per counterfactual
+    # ------------------------------------------------------------------
+    if record_video:
+        # forziamo 1 step per episodio per evitare "crescita" multi-step
+        args["max_steps_per_episode"] = 1
+        environment.max_steps = 1  # sincronizza l'env MolDQN/Molecule
+
+    # Lista frame globale: seed + 1 frame per episodio registrato
+    frames_all = []
+    recorded_episodes = 0
+
+    def record_current_frame(info: dict):
+        """Renderizza lo stato corrente (molecola corrente) come frame video."""
+        frame = environment.render(mode="rgb_array", info=info, size=video_size)
+        frame = np.require(frame, dtype=np.uint8, requirements=["C_CONTIGUOUS", "ALIGNED"])
+        frames_all.append(frame)
+
+    # Registra subito la seed (molecola iniziale)
+    if record_video:
+        record_current_frame({
+            "type": "seed",
+            "episode": 0,
+            "step": 0,
+            "action": "INIT",
+            "reward": "0.0000",
+            "pred": "0.0000",
+            "sim": "1.0000",
+            "eps": f"{1.0:.3f}",
+        })
+
+    # -----------------------------
+    # Training loop
+    # -----------------------------
     while episode < args["epochs"]:
         steps_left = args["max_steps_per_episode"] - environment.num_steps_taken
         valid_actions = list(environment.get_valid_actions())
@@ -172,26 +203,6 @@ def meg_train(
         action_embedding = np.append(action_encoder(action), steps_left)
 
         _, out, done = result
-
-        # -------------
-        # Render frame
-        # -------------
-        if should_record_episode(episode + 1):
-            info = {
-                "episode": episode + 1,
-                "step": environment.num_steps_taken,
-                "steps_left": steps_left,
-                "action": str(action),
-                "reward": f"{out['reward']:.4f}",
-                "pred": f"{out['reward_pred']:.4f}",
-                "sim": f"{out['reward_sim']:.4f}",
-                "eps": f"{eps:.3f}",
-            }
-
-            frame = environment.render(mode="rgb_array", info=info, size=video_size)
-            frame = np.ascontiguousarray(frame, dtype=np.uint8)
-            frames.append(frame)
-
 
         writer.add_scalar(f"{tb_name}/reward", out["reward"], it)
         writer.add_scalar(f"{tb_name}/prediction", out["reward_pred"], it)
@@ -227,38 +238,57 @@ def meg_train(
 
             queue.insert({"marker": marker, "id": id_function(action), **out})
 
-            # decaying epsilon (come nel paper/repo)
+            # decaying epsilon
             eps *= 0.9987
 
-            # -----------------------------
-            # Save video at end of episode
-            # -----------------------------
-            if should_record_episode(episode) and len(frames) > 0:
+            # ----------------------------------------------------------
+            # Video: 1 frame per episodio = molecola dopo 1 sola modifica
+            # ----------------------------------------------------------
+            if should_record_episode(episode):
+                record_current_frame({
+                    "type": "cf",
+                    "episode": episode,
+                    "step": environment.num_steps_taken,  # sarà 1
+                    "action": str(action),
+                    "reward": f"{out['reward']:.4f}",
+                    "pred": f"{out['reward_pred']:.4f}",
+                    "sim": f"{out['reward_sim']:.4f}",
+                    "eps": f"{eps:.3f}",
+                })
+                recorded_episodes += 1
+
+            # reset episodio: torna alla seed
+            environment.initialize()
+
+            # ----------------------------------------------------------
+            # Stop e salva UN SOLO video con: seed + N controfattuali
+            # ----------------------------------------------------------
+            if record_video and (recorded_episodes >= record_n_episodes):
                 video_dir = os.path.join(base_path, "videos")
                 os.makedirs(video_dir, exist_ok=True)
 
                 mp4_path = os.path.join(
-                    video_dir, f"sample_{args['sample']}_ep_{episode}.mp4"
+                    video_dir,
+                    f"sample_{args['sample']}_seed_plus_{recorded_episodes}_cf.mp4"
                 )
 
                 try:
-                    imageio.mimsave(mp4_path, frames, fps=video_fps)
+                    frames_safe = [
+                        np.require(f, dtype=np.uint8, requirements=["C_CONTIGUOUS", "ALIGNED"])
+                        for f in frames_all
+                    ]
+                    imageio.mimsave(mp4_path, frames_safe, fps=video_fps)
                     print("Saved rollout video:", mp4_path)
                 except Exception as e:
                     gif_path = mp4_path.replace(".mp4", ".gif")
-                    imageio.mimsave(gif_path, frames, fps=video_fps)
+                    imageio.mimsave(gif_path, frames_all, fps=video_fps)
                     print("MP4 failed, saved GIF instead:", gif_path, "| error:", str(e))
 
-                recorded_episodes += 1
-
-            # reset per prossimo episodio
-            frames = []
-            environment.initialize()
-
-            # stop dopo aver registrato N episodi (per demo)
-            if record_video and (recorded_episodes >= record_n_episodes):
                 print(f"Stopping: recorded {recorded_episodes} episode(s).")
                 return
+
+
+
 
 
 
@@ -299,6 +329,11 @@ def pick_correct_sample(dataset, experiment_name, split, model, start_idx=0, max
     raise RuntimeError("No correctly-predicted sample found.")
 
 
+
+
+
+
+
 # -----------------------------
 # CLI (TOX21 only)
 # -----------------------------
@@ -326,7 +361,7 @@ def main(
     record_video: bool = typer.Option(True),
     video_every: int = typer.Option(1),          # 1 = registra OGNI episodio (per demo)
     video_fps: int = typer.Option(2),
-    video_size: int = typer.Option(450),         # user-friendly: un solo int
+    video_size: int = typer.Option(448),         # user-friendly: un solo int
     record_n_episodes: int = typer.Option(1),    # quanti episodi vuoi registrare (demo=1)
 ):
     dataset = "tox21"
@@ -383,6 +418,70 @@ def main(
         video_size=(video_size, video_size),
         record_n_episodes=record_n_episodes,
     )
+
+def compute_cf_metrics_tox21(original_entry: dict, cf_list: list, sim_thresholds=(0.9, 0.8, 0.7)):
+    """
+    original_entry: dict come quello che aggiungi in overall_queue[0] (marker='og', prediction, ...)
+    cf_list: lista di dict (cf_queue.data_) con campi: reward, reward_pred, reward_sim, prediction{class, output}, ...
+    """
+    og_class = int(original_entry["prediction"]["class"])
+
+    # safety: filtra solo CF con prediction
+    cfs = [c for c in cf_list if "prediction" in c and "class" in c["prediction"]]
+
+    if len(cfs) == 0:
+        return {
+            "n_cf": 0,
+            "flip_rate": 0.0,
+            "tox_to_nontox_rate": 0.0,
+            "nontox_to_tox_rate": 0.0,
+        }
+
+    cf_class = np.array([int(c["prediction"]["class"]) for c in cfs], dtype=int)
+    flips = (cf_class != og_class).astype(np.int32)
+
+    # similarity: nel vostro codice è già out['reward_sim']
+    sims = np.array([float(c.get("reward_sim", np.nan)) for c in cfs], dtype=float)
+    # reward_pred: nel vostro codice è out['reward_pred']
+    pred_scores = np.array([float(c.get("reward_pred", np.nan)) for c in cfs], dtype=float)
+    rewards = np.array([float(c.get("reward", np.nan)) for c in cfs], dtype=float)
+
+    flip_rate = float(flips.mean())
+
+    # Direzioni (assumendo classi: 1=Tox, 0=NoTox; se è invertito nel tuo setup, basta invertire qui)
+    tox_to_nontox_rate = float(np.mean((og_class == 1) & (cf_class == 0))) if og_class == 1 else 0.0
+    nontox_to_tox_rate = float(np.mean((og_class == 0) & (cf_class == 1))) if og_class == 0 else 0.0
+
+    # Success@k: esiste almeno una CF che flippa
+    success_at_k = float(flips.max())  # 1.0 se almeno un flip
+
+    # Similarity sui soli flip (se ce ne sono)
+    flip_sims = sims[flips == 1]
+    sim_flip_median = float(np.nanmedian(flip_sims)) if flip_sims.size else float("nan")
+    sim_all_median = float(np.nanmedian(sims))
+
+    # Flip rate condizionato a soglie di similarity
+    flip_rate_at_sim = {}
+    for t in sim_thresholds:
+        mask = sims >= t
+        flip_rate_at_sim[f"flip_rate_sim_ge_{t}"] = float(flips[mask].mean()) if mask.any() else 0.0
+
+    return {
+        "n_cf": int(len(cfs)),
+        "flip_rate": flip_rate,
+        "tox_to_nontox_rate": tox_to_nontox_rate,
+        "nontox_to_tox_rate": nontox_to_tox_rate,
+        "success_at_k": success_at_k,
+        "sim_all_median": sim_all_median,
+        "sim_flip_median": sim_flip_median,
+        "pred_score_flip_mean": float(np.nanmean(pred_scores[flips == 1])) if (flips == 1).any() else float("nan"),
+        "reward_flip_mean": float(np.nanmean(rewards[flips == 1])) if (flips == 1).any() else float("nan"),
+        **flip_rate_at_sim,
+        # per TensorBoard histogram
+        "_sims": sims,
+        "_flip_sims": flip_sims,
+        "_flips": flips,
+    }
 
 
 if __name__ == "__main__":

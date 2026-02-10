@@ -501,7 +501,7 @@ class Molecule(object):
              mode="rgb_array",
              state=None,
              info=None,
-             size=(448, 448),
+             size=(464, 464),
              font_size=14,
              margin=8,
              draw_size=(900, 900)):

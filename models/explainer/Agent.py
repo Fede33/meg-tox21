@@ -40,22 +40,48 @@ class Agent(object):
 
     def train_step(self, batch_size, gamma, polyak):
 
+        if len(self.replay_buffer) > 0:
+            t = self.replay_buffer.memory[0]
+            print("transition length:", len(t))
+            
+            for i, x in enumerate(t):
+                shp = getattr(x, "shape", None)
+                print(i, type(x), shp)
+
+
         experience = self.replay_buffer.sample(batch_size)
-        states_ = torch.stack([S for S, *_ in experience])
+        states_ = torch.stack([S for S, *_ in experience]).to(self.device)  # [B, num_input]
+        q = self.dqn(states_).squeeze(-1)                                   # [B]
 
-        next_states_ = [S for *_, S, _ in experience]
-        q, q_target = self.dqn(states_), torch.stack([self.target_dqn(S).max(dim=0).values.detach() for S in next_states_])
+        next_states_ = [S.to(self.device) for *_, S, _ in experience]        # list of [nA_i, num_input]
 
-        rewards = torch.stack([R for _, R, *_ in experience]).reshape((1, batch_size)).to(self.device)
-        dones = torch.tensor([D for *_, D in experience]).reshape((1, batch_size)).to(self.device)
+        #Double DQN target
+        q_next = []
+        with torch.no_grad():
+            for S in next_states_:
+                # online selects
+                q_online_all = self.dqn(S).squeeze(-1)        # [nA]
+                a_star = torch.argmax(q_online_all, dim=0)    # scalar index
 
-        q_target = rewards + gamma * (1 - dones) * q_target
-        td_target = q - q_target
+                # target evaluates
+                q_target_all = self.target_dqn(S).squeeze(-1) # [nA]
+                q_next.append(q_target_all[a_star])
+
+        q_next = torch.stack(q_next)                                           # [B]
+
+        rewards = torch.stack([R for _, R, *_ in experience]).to(self.device)   # [B] or [B,1]
+        rewards = rewards.view(-1)                                             # [B]
+
+        dones = torch.tensor([D for *_, D in experience], device=self.device).float()  # [B]
+
+        y = rewards + gamma * (1.0 - dones) * q_next                            # [B]
+        td = q - y                                                              # [B]
+
 
         loss = torch.where(
-            torch.abs(td_target) < 1.0,
-            0.5 * td_target * td_target,
-            1.0 * (torch.abs(td_target) - 0.5),
+            torch.abs(td) < 1.0,
+            0.5 * td * td,
+            1.0 * (torch.abs(td) - 0.5),
         ).mean()
 
         self.optimizer.zero_grad()
