@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def main(run_dir: str):
-    # run_dir esempio: ./runs/tox21/test
+    
     results_dir = osp.join(run_dir, "results")
     csv_path = osp.join(results_dir, "history.csv")
 
@@ -16,7 +16,6 @@ def main(run_dir: str):
 
     df = pd.read_csv(csv_path)
 
-    # --- LOSS ---
     plt.figure()
     plt.plot(df["epoch"], df["train_loss"], label="train_loss")
     plt.plot(df["epoch"], df["val_loss"], label="val_loss")
@@ -29,7 +28,6 @@ def main(run_dir: str):
     plt.savefig(out1, dpi=200)
     plt.close()
 
-    # --- ACCURACY ---
     plt.figure()
     plt.plot(df["epoch"], df["train_acc"], label="train_acc")
     plt.plot(df["epoch"], df["val_acc"], label="val_acc")

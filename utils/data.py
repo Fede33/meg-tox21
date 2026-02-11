@@ -10,7 +10,6 @@ from utils.molecules import check_molecule_validity, pyg_to_mol_tox21
 
 
 def pre_transform(sample, n_pad: int):
-    # Pad features to obtain a consistent node feature dimensionality
     sample.x = F.pad(sample.x, (0, n_pad), "constant")
     return sample
 
@@ -48,7 +47,6 @@ def preprocess(dataset_name: str, experiment_name: str, batch_size: int):
 
 
 def _preprocess_tox21(experiment_name: str, batch_size: int):
-    # Load the three predefined TUDataset splits provided by the dataset package
     dataset_tr = TUDataset(
         'data/tox21',
         name='Tox21_AhR_training',
@@ -67,7 +65,7 @@ def _preprocess_tox21(experiment_name: str, batch_size: int):
         pre_transform=lambda sample: pre_transform(sample, 2)
     )
 
-    # Merge + filter invalid molecules
+
     data_list = (
         [dataset_tr.get(idx) for idx in range(len(dataset_tr))] +
         [dataset_vl.get(idx) for idx in range(len(dataset_vl))] +
@@ -76,7 +74,7 @@ def _preprocess_tox21(experiment_name: str, batch_size: int):
 
     data_list = list(filter(lambda mol: check_molecule_validity(mol, pyg_to_mol_tox21), data_list))
 
-    # Balance positives/negatives (as in the original code)
+    
     positives = [x for x in data_list if int(x.y) == 1]
     negatives = [x for x in data_list if int(x.y) == 0]
     n_pos = len(positives)
@@ -85,7 +83,7 @@ def _preprocess_tox21(experiment_name: str, batch_size: int):
     data_list = positives + negatives
     random.shuffle(data_list)
 
-    # Create custom splits (same logic as original)
+    
     n = len(data_list) // 10
     train_data = data_list[n:]
     val_data = data_list[:n]
@@ -100,7 +98,7 @@ def _preprocess_tox21(experiment_name: str, batch_size: int):
     val.data, val.slices = train.collate(val_data)
     test.data, test.slices = train.collate(test_data)
 
-    # Persist splits
+    
     base = f"runs/tox21/{experiment_name}/splits"
     os.makedirs(base, exist_ok=True)
     torch.save((train.data, train.slices), f"{base}/train.pth")

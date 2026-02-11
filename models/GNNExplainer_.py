@@ -66,7 +66,6 @@ class GNNExplainer_(GNNExplainer):
                 x.shape[0]
         ).long()
 
-        # Get the initial prediction.
         prediction = kwargs['prediction']
         node_feat_mask_enable = False if 'node_feats' not in kwargs else kwargs['node_feats']
 
@@ -80,7 +79,7 @@ class GNNExplainer_(GNNExplainer):
 
         optimizer = torch.optim.Adam(parameters, lr=self.lr)
 
-        if self.log:  # pragma: no cover
+        if self.log:
             pbar = tqdm(total=self.epochs)
             pbar.set_description(f'Explaining')
 
@@ -95,11 +94,11 @@ class GNNExplainer_(GNNExplainer):
             optimizer.step()
             self.__modify_edge_mask__(self.edge_mask)
 
-            if self.log:  # pragma: no cover
+            if self.log: 
                 pbar.update(1)
                 pbar.set_description(f"Loss: {loss.item():.2f}")
 
-        if self.log:  # pragma: no cover
+        if self.log:
             pbar.close()
 
         if self.node_feat_mask is not None:
@@ -125,10 +124,8 @@ class GNNExplainer_(GNNExplainer):
         data.num_nodes = num_nodes
         G = to_networkx(data, edge_attrs=['att'])
 
-        # kwargs['with_labels'] = kwargs.get('with_labels') or True
         kwargs['font_size'] = kwargs.get('font_size') or 10
         node_size = kwargs.get('node_size') or 800
-        # kwargs['cmap'] = kwargs.get('cmap') or 'cool'
 
         SCALE = 2
         pos = nx.rescale_layout_dict(nx.kamada_kawai_layout(G), scale=SCALE)

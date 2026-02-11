@@ -1,33 +1,3 @@
-"""
-MEG (RL) metrics implementation for TOX21 counterfactual generation.
-
-Assumptions about your MEG output structure (matches your repo):
-- For each explained sample, you have:
-  runs/<dataset>/<experiment>/meg_output/<sample_id>/data.json
-- data.json is a list where:
-  - the first item is the original molecule record with marker == "og"
-  - the rest are counterfactual records with marker == "cf"
-- Each record contains:
-  - prediction: {
-        "type": "bin_classification",
-        "output": [p_no_tox, p_tox]  # softmax probs
-        "class": <int>              # predicted class index
-        ...
-    }
-  - reward, reward_pred, reward_sim
-  - id (for cf), smiles, etc.
-
-This script computes:
-1) Flip metrics: flip indicator, flip rates by direction, overall, Success@k, #flips per seed
-2) Prediction contrast: Δp(target), p_target(m'), confidence margin
-3) Similarity analysis: similarity stats on flips vs non-flips, flip rate by similarity thresholds
-4) Reward-based summaries + correlation(similarity, Δp(target))
-5) Pareto-style top tables like the paper (Prediction + Similarity + Reward)
-
-Run example:
-python meg_metrics.py --base runs/tox21/exp1/meg_output --k 10 --sim-thresholds 0.9 0.8 0.7
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -44,11 +14,8 @@ except ImportError:
     pd = None
 
 
-# -----------------------------
-# Helpers
-# -----------------------------
+
 def safe_get(d: Dict[str, Any], path: str, default=None):
-    """Get nested dict value using dotted path, e.g., 'prediction.output'."""
     cur = d
     for key in path.split("."):
         if not isinstance(cur, dict) or key not in cur:
@@ -58,7 +25,6 @@ def safe_get(d: Dict[str, Any], path: str, default=None):
 
 
 def list_sample_dirs(base_dir: str) -> List[str]:
-    """Return list of directories that contain a data.json."""
     out = []
     if not os.path.isdir(base_dir):
         return out
@@ -66,7 +32,6 @@ def list_sample_dirs(base_dir: str) -> List[str]:
         p = os.path.join(base_dir, name)
         if os.path.isdir(p) and os.path.isfile(os.path.join(p, "data.json")):
             out.append(p)
-    # sort by numeric folder name if possible
     def key_fn(x):
         try:
             return int(os.path.basename(x))
@@ -106,7 +71,7 @@ class PairMetrics:
     og_pred_class: int
     cf_pred_class: int
     flip: int
-    # target is opposite of og class for tox21
+
     target_class: int
     p_target_og: float
     p_target_cf: float
@@ -118,19 +83,12 @@ class PairMetrics:
     reward_sim: float
 
 
-# -----------------------------
-# Core metric computation
-# -----------------------------
+
 def compute_metrics_for_sample(sample_dir: str, top_k: int = 10) -> Tuple[List[PairMetrics], Dict[str, Any]]:
-    """
-    Returns:
-      - list of PairMetrics for each (og, cf) pair
-      - per-sample summary dict (Success@k, #flips, etc.)
-    """
+
     sample_id = os.path.basename(sample_dir)
     data = load_meg_run(sample_dir)
 
-    # Identify original and counterfactuals
     og = None
     cfs = []
     for rec in data:
@@ -149,7 +107,7 @@ def compute_metrics_for_sample(sample_dir: str, top_k: int = 10) -> Tuple[List[P
     p_target_og = float(og_probs[target_class])
     og_smiles = og.get("smiles")
 
-    # Sort CFs by reward descending (they were inserted in a SortedQueue by reward)
+
     cfs_sorted = sorted(cfs, key=lambda r: float(r.get("reward", -1e9)), reverse=True)
 
     pairs: List[PairMetrics] = []
@@ -166,7 +124,7 @@ def compute_metrics_for_sample(sample_dir: str, top_k: int = 10) -> Tuple[List[P
             if rank < top_k:
                 flips_in_topk += 1
 
-        # Similarity: prefer reward_sim if present, otherwise try 'similarity'
+
         sim = cf.get("reward_sim", None)
         if sim is None:
             sim = cf.get("similarity", None)
@@ -202,7 +160,6 @@ def compute_metrics_for_sample(sample_dir: str, top_k: int = 10) -> Tuple[List[P
         "num_flips_total": flips_total,
         "num_flips_topk": flips_in_topk,
         "success_at_k": int(flips_in_topk > 0),
-        # If you want: "best_flip_similarity" etc. computed later globally
     }
     return pairs, sample_summary
 
@@ -214,7 +171,6 @@ def aggregate_metrics(
     top_k: int,
 ) -> Dict[str, Any]:
     """Compute global metrics."""
-    # Convert to numpy arrays for quick stats
     flips = np.array([p.flip for p in all_pairs], dtype=int)
     sim = np.array([p.similarity for p in all_pairs], dtype=float)
     dpt = np.array([p.delta_p_target for p in all_pairs], dtype=float)
@@ -222,10 +178,9 @@ def aggregate_metrics(
     og_cls = np.array([p.og_pred_class for p in all_pairs], dtype=int)
     cf_cls = np.array([p.cf_pred_class for p in all_pairs], dtype=int)
 
-    # Flip rates (pair-level)
     overall_flip_rate = float(np.mean(flips)) if flips.size else float("nan")
 
-    # Directional flip rates at pair level
+
     tox_to_notox = (og_cls == 1) & (cf_cls == 0)
     notox_to_tox = (og_cls == 0) & (cf_cls == 1)
     tox_pairs = (og_cls == 1)
@@ -234,11 +189,10 @@ def aggregate_metrics(
     tox_to_notox_rate = float(np.sum(tox_to_notox) / np.sum(tox_pairs)) if np.sum(tox_pairs) else float("nan")
     notox_to_tox_rate = float(np.sum(notox_to_tox) / np.sum(notox_pairs)) if np.sum(notox_pairs) else float("nan")
 
-    # Sample-level metrics
+
     success_at_k = float(np.mean([s["success_at_k"] for s in sample_summaries])) if sample_summaries else float("nan")
     avg_flips_per_seed = float(np.mean([s["num_flips_total"] for s in sample_summaries])) if sample_summaries else float("nan")
 
-    # Similarity stats conditioned on flip
     flip_mask = flips == 1
     nonflip_mask = flips == 0
 
@@ -259,7 +213,6 @@ def aggregate_metrics(
     sim_stats_flip = stats(sim[flip_mask])
     sim_stats_nonflip = stats(sim[nonflip_mask])
 
-    # Flip rate above similarity thresholds
     flip_rate_by_threshold = {}
     for t in sim_thresholds:
         eligible = (~np.isnan(sim)) & (sim >= t)
@@ -268,13 +221,12 @@ def aggregate_metrics(
         else:
             flip_rate_by_threshold[f"sim>={t}"] = float(np.mean(flips[eligible]))
 
-    # Correlation(similarity, delta_p_target) (on all pairs with finite values)
     corr = float("nan")
     finite_mask = (~np.isnan(sim)) & (~np.isnan(dpt))
     if np.sum(finite_mask) >= 2:
         corr = float(np.corrcoef(sim[finite_mask], dpt[finite_mask])[0, 1])
 
-    # Δp(target) stats on flips vs non-flips
+
     dpt_stats_flip = stats(dpt[flip_mask])
     dpt_stats_nonflip = stats(dpt[nonflip_mask])
 
@@ -303,16 +255,9 @@ def aggregate_metrics(
     }
 
 
-# -----------------------------
-# Pareto-style tables
-# -----------------------------
+
 def make_pareto_tables(all_pairs: List[PairMetrics], top_n: int = 20):
-    """
-    Returns three lists of PairMetrics (only flips):
-    - top by reward
-    - top by similarity
-    - top by delta_p_target
-    """
+
     flips = [p for p in all_pairs if p.flip == 1]
     by_reward = sorted(flips, key=lambda p: p.reward, reverse=True)[:top_n]
     by_sim = sorted(flips, key=lambda p: (p.similarity if not np.isnan(p.similarity) else -1e9), reverse=True)[:top_n]
@@ -326,9 +271,7 @@ def pairs_to_dataframe(pairs: List[PairMetrics]):
     return pd.DataFrame([p.__dict__ for p in pairs])
 
 
-# -----------------------------
-# CLI
-# -----------------------------
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", type=str, required=True,
@@ -357,13 +300,13 @@ def main():
 
     agg = aggregate_metrics(all_pairs, sample_summaries, args.sim_thresholds, args.k)
 
-    # Pretty print summary
+    
     print("\n====================")
     print("MEG RL METRICS (TOX21)")
     print("====================")
     print(json.dumps(agg, indent=2))
 
-    # Pareto-like tables
+
     by_reward, by_sim, by_dpt = make_pareto_tables(all_pairs, top_n=args.top_n)
 
     def print_top(title: str, lst: List[PairMetrics], n: int = 10):
@@ -380,7 +323,6 @@ def main():
     print_top("TOP FLIPS BY SIMILARITY", by_sim)
     print_top("TOP FLIPS BY Δp(target)", by_dpt)
 
-    # Optional CSV saving
     if args.save_csv and pd is not None:
         out_dir = os.path.join(args.base, "_metrics")
         os.makedirs(out_dir, exist_ok=True)

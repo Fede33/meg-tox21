@@ -31,7 +31,6 @@ def main(
 
     base_path = osp.join("./runs", dataset_name, experiment_name)
 
-    # Create / reset folders
     if not osp.exists(base_path):
         os.makedirs(osp.join(base_path, "ckpt"), exist_ok=True)
         os.makedirs(osp.join(base_path, "plots"), exist_ok=True)
@@ -60,6 +59,7 @@ def main(
         dropout=dropout,
     ).to(device)
 
+    # Graph Neural Network used as the DGN to be explained by MEG later
     with open(osp.join(base_path, "hyperparams.json"), "w") as outf:
         json.dump(
             {
@@ -78,7 +78,6 @@ def main(
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
-    # TOX21 is a classification task here
     train_cycle_classifier(
         task=dataset_name,
         train_loader=train_loader,

@@ -170,7 +170,7 @@ def train_cycle_classifier(
         }
         history.append(row)
 
-        # append JSONL (così non perdi nulla se si interrompe)
+    
         with open(history_jsonl, "a") as f:
             f.write(json.dumps(row) + "\n")
 
@@ -178,7 +178,7 @@ def train_cycle_classifier(
         print(f"Train -> Acc: {train_acc:.5f}  Rec: {train_rec:.5f}  Prec: {train_prec:.5f}  F1: {train_f1:.5f}")
         print(f"Val   -> Acc: {val_acc:.5f}  Rec: {val_rec:.5f}  Prec: {val_prec:.5f}  F1: {val_f1:.5f}")
 
-        # salva best model (su val acc) + confusion matrix
+    
         if best_acc[1] < val_acc:
             best_acc = (train_acc, val_acc)
 
@@ -204,7 +204,7 @@ def train_cycle_classifier(
                     indent=2,
                 )
 
-            # Confusion matrix su VAL (best model)
+            
             cm_val = confusion_matrix_torch(y_val, yp_val, num_classes=model.num_output)
             np.save(osp.join(results_dir, "cm_val.npy"), cm_val)
             save_confusion_matrix(
@@ -220,7 +220,7 @@ def train_cycle_classifier(
                 normalize=True,
             )
 
-            # Confusion matrix su TEST (best model)
+            
             test_acc, test_prec, test_rec, test_f1, test_loss_sum, y_test, yp_test = test_classifier(
                 model, test_loader, device, return_preds=True
             )
@@ -239,11 +239,11 @@ def train_cycle_classifier(
                 normalize=True,
             )
 
-            # log test metrics del best in TB
+            
             writer.add_scalar("Accuracy/test(best)", test_acc, epoch)
             writer.add_scalar("F1/test(best)", test_f1, epoch)
 
-    # Alla fine: salva CSV “tabella valori”
+    
     csv_path = osp.join(results_dir, "history.csv")
     with open(csv_path, "w", newline="") as f:
         fieldnames = list(history[0].keys()) if history else []
