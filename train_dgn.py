@@ -14,9 +14,9 @@ from torch_geometric.utils import precision, recall, f1_score, accuracy
 def main(
     dataset_name: str,
     experiment_name: str = typer.Argument("test"),
-    lr: float = typer.Option(0.01),
-    hidden_size: int = typer.Option(32),
-    batch_size: int = typer.Option(32),
+    lr: float = typer.Option(0.001),
+    hidden_size: int = typer.Option(256),
+    batch_size: int = typer.Option(20),
     dropout: float = typer.Option(0.1),
     epochs: int = typer.Option(50),
     seed: int = typer.Option(0),

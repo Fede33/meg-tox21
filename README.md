@@ -40,17 +40,17 @@ Hyperparameters → hyperparams.json
 
 Generate Counterfactual Explanations (MEG)
 Basic run (single sample)
-python train_meg.py tox21 exp --sample 1
+python train_meg.py exp --sample 1
 
 This generates counterfactuals for test molecule ID 1.
 
 Run with more counterfactuals
-python train_meg.py tox21 exp \
+python train_meg.py exp \
   --sample 1 \
   --num-counterfactuals 5
 
 Example full run (as used in experiments)
-python train_meg.py tox21 exp \
+python train_meg.py exp \
   --sample 90 \
   --epochs 100 \
   --num-counterfactuals 5 \

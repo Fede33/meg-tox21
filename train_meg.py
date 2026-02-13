@@ -352,7 +352,7 @@ def pick_correct_sample(dataset, experiment_name, split, model, start_idx=0, max
 def main(
     experiment_name: str = typer.Argument("test"),
     sample: int = typer.Option(0),
-    epochs: int = typer.Option(5000),
+    epochs: int = typer.Option(3000),
     max_steps_per_episode: int = typer.Option(1),
     num_counterfactuals: int = typer.Option(10),
     fp_length: int = typer.Option(1024),
