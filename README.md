@@ -23,7 +23,7 @@ structural similarity (combined neural + Morgan fingerprint similarity)
 Train the Toxicity GNN (DGN)
 Train the GCNN model on TOX21:
 
-python train_dgn.py tox21 flaminia
+python train_dgn.py tox21 exp
 
 
 This will:
