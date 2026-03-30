@@ -4,7 +4,7 @@ This repository contains a simplified and task-focused implementation of **MEG: 
 
 The project was developed for the **Reinforcement Learning course** and combines **graph neural networks** with **reinforcement learning** to generate molecular counterfactual explanations.
 
-More specifically, the pipeline first trains a graph-based toxicity predictor and then uses a reinforcement learning agent to search for structurally similar molecules whose predicted toxicity class is flipped.
+More specifically the pipeline first trains a graph-based toxicity predictor and then uses a reinforcement learning agent to search for structurally similar molecules whose predicted toxicity class is flipped.
 
 ---
 
